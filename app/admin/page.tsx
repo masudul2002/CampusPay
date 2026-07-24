@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import { GlassCard } from "@/components/ui/glass-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +22,10 @@ import {
   DollarSign,
   UserCheck,
   CheckCircle,
+  XCircle,
+  Clock,
+  MessageSquare,
+  Search,
 } from "lucide-react";
 
 interface AdminStats {
@@ -33,12 +36,13 @@ interface AdminStats {
   recentTransactions: any[];
 }
 
-type AdminSidebarTab = "dashboard" | "users" | "services" | "transactions" | "announcements" | "settings";
+type AdminSidebarTab = "dashboard" | "verification" | "users" | "services" | "transactions" | "announcements" | "settings";
 
 export default function EnhancedAdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AdminSidebarTab>("dashboard");
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [verificationQueue, setVerificationQueue] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
@@ -46,27 +50,29 @@ export default function EnhancedAdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   // Modal State
-  const [newAnnouncementModal, setNewAnnouncementModal] = useState(false);
-  const [announcementForm, setAnnouncementForm] = useState({ title: "", description: "", priority: "MEDIUM" });
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [selectedReqId, setSelectedReqId] = useState<string | null>(null);
+  const [rejectComment, setRejectComment] = useState("");
+  const [processing, setProcessing] = useState(false);
 
   const fetchAdminData = async () => {
     try {
       setLoading(true);
-      const statsRes = await fetch("/api/admin/stats");
-      if (!statsRes.ok) {
-        router.push("/dashboard");
-        return;
-      }
-      const statsData = await statsRes.json();
-      setStats(statsData.data);
-
-      const [uRes, sRes, aRes, stRes] = await Promise.all([
+      const [statsRes, vRes, uRes, sRes, aRes, stRes] = await Promise.all([
+        fetch("/api/admin/stats"),
+        fetch("/api/admin/verification"),
         fetch("/api/users"),
         fetch("/api/services"),
         fetch("/api/announcements"),
         fetch("/api/settings"),
       ]);
 
+      if (!statsRes.ok) {
+        router.push("/dashboard");
+        return;
+      }
+      setStats((await statsRes.json()).data);
+      if (vRes.ok) setVerificationQueue((await vRes.json()).data || []);
       if (uRes.ok) setUsers((await uRes.json()).data || []);
       if (sRes.ok) setServices((await sRes.json()).data || []);
       if (aRes.ok) setAnnouncements((await aRes.json()).data || []);
@@ -82,34 +88,47 @@ export default function EnhancedAdminDashboard() {
     fetchAdminData();
   }, []);
 
-  const handleCreateAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleApproveVerification = async (paymentRequestId: string) => {
     try {
-      const res = await fetch("/api/announcements", {
+      setProcessing(true);
+      const res = await fetch("/api/admin/verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(announcementForm),
+        body: JSON.stringify({ paymentRequestId, action: "APPROVE" }),
       });
       if (res.ok) {
-        setNewAnnouncementModal(false);
-        setAnnouncementForm({ title: "", description: "", priority: "MEDIUM" });
         fetchAdminData();
       }
     } catch (err) {
-      alert("Failed to create announcement");
+      alert("Error approving verification");
+    } finally {
+      setProcessing(false);
     }
   };
 
-  const toggleUserVerification = async (userId: string, currentStatus: boolean) => {
+  const handleRejectVerification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReqId) return;
     try {
-      await fetch("/api/admin/users", {
-        method: "PATCH",
+      setProcessing(true);
+      const res = await fetch("/api/admin/verification", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, isVerified: !currentStatus }),
+        body: JSON.stringify({
+          paymentRequestId: selectedReqId,
+          action: "REJECT",
+          comment: rejectComment || "Transaction ID mismatch or payment unverified",
+        }),
       });
-      fetchAdminData();
+      if (res.ok) {
+        setRejectModalOpen(false);
+        setRejectComment("");
+        fetchAdminData();
+      }
     } catch (err) {
-      console.error(err);
+      alert("Error rejecting verification");
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -123,6 +142,7 @@ export default function EnhancedAdminDashboard() {
 
   const sidebarItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "verification", label: "Verification Queue", icon: Clock },
     { id: "users", label: "Users", icon: Users },
     { id: "services", label: "Services", icon: Layers },
     { id: "transactions", label: "Transactions", icon: Activity },
@@ -130,10 +150,14 @@ export default function EnhancedAdminDashboard() {
     { id: "settings", label: "Settings", icon: SettingsIcon },
   ] as const;
 
+  const pendingCount = verificationQueue.filter((v) => v.status === "UNDER_REVIEW" || v.status === "PENDING").length;
+  const approvedCount = verificationQueue.filter((v) => v.status === "APPROVED").length;
+  const rejectedCount = verificationQueue.filter((v) => v.status === "REJECTED").length;
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col md:flex-row">
       
-      {/* Admin Sidebar Navigation */}
+      {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 bg-zinc-900/90 border-b md:border-b-0 md:border-r border-white/10 p-6 flex flex-col justify-between shrink-0">
         <div>
           <div className="flex items-center gap-3 mb-8">
@@ -143,12 +167,11 @@ export default function EnhancedAdminDashboard() {
             <div>
               <h2 className="text-lg font-bold font-heading">CampusPay</h2>
               <span className="text-[10px] text-brand-accent font-mono uppercase tracking-widest block -mt-1">
-                Admin Control
+                Admin HQ v1.3
               </span>
             </div>
           </div>
 
-          {/* Navigation Links */}
           <nav className="space-y-1.5">
             {sidebarItems.map((item) => {
               const IconComp = item.icon;
@@ -157,14 +180,21 @@ export default function EnhancedAdminDashboard() {
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id as AdminSidebarTab)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all ${
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition-all ${
                     active
                       ? "bg-brand-primary text-white shadow-glow"
                       : "text-zinc-400 hover:text-white hover:bg-white/5"
                   }`}
                 >
-                  <IconComp className="w-4 h-4" />
-                  {item.label}
+                  <div className="flex items-center gap-3">
+                    <IconComp className="w-4 h-4" />
+                    {item.label}
+                  </div>
+                  {item.id === "verification" && pendingCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-500 text-white font-bold animate-pulse">
+                      {pendingCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -175,44 +205,28 @@ export default function EnhancedAdminDashboard() {
           <Button variant="secondary" fullWidth size="sm" onClick={() => router.push("/dashboard")}>
             🎓 Student Portal
           </Button>
-          <Button variant="outline" fullWidth size="sm" onClick={() => router.push("/")}>
-            <LogOut className="w-4 h-4 mr-2" /> Home
-          </Button>
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* Main Admin Content */}
       <main className="flex-1 p-6 md:p-10 overflow-y-auto bg-ambient-grid">
         
-        {/* Top Action Header */}
         <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/10">
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold font-heading text-white uppercase tracking-wide">
-              {activeTab} Management
+              {activeTab.replace("-", " ")} Management
             </h1>
             <p className="text-xs text-zinc-400 font-mono mt-1">
-              Live Production Database Connected (dev.db)
+              bKash Merchant Payment Verification System
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            {activeTab === "announcements" && (
-              <Button
-                variant="glow"
-                size="sm"
-                icon={<Plus className="w-4 h-4" />}
-                onClick={() => setNewAnnouncementModal(true)}
-              >
-                New Announcement
-              </Button>
-            )}
-            <button
-              onClick={fetchAdminData}
-              className="p-2.5 rounded-2xl bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-          </div>
+          <button
+            onClick={fetchAdminData}
+            className="p-2.5 rounded-2xl bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Tab 1: Dashboard Analytics */}
@@ -220,55 +234,136 @@ export default function EnhancedAdminDashboard() {
           <div className="space-y-8">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <GlassCard glowColor="primary" className="p-6">
-                <span className="text-xs uppercase font-bold text-zinc-400">Total Users</span>
+                <span className="text-xs uppercase font-bold text-zinc-400">Registered Students</span>
                 <p className="text-3xl font-extrabold font-heading text-white mt-2">
                   {stats?.totalUsers || 0}
                 </p>
               </GlassCard>
 
               <GlassCard glowColor="accent" className="p-6">
-                <span className="text-xs uppercase font-bold text-zinc-400">Transaction Volume</span>
+                <span className="text-xs uppercase font-bold text-zinc-400">Total Volume</span>
                 <p className="text-3xl font-extrabold font-mono text-gradient-brand mt-2">
                   {formatBDT(stats?.totalVolume || 0)}
                 </p>
               </GlassCard>
 
               <GlassCard glowColor="secondary" className="p-6">
-                <span className="text-xs uppercase font-bold text-zinc-400">Revenue Fees</span>
-                <p className="text-3xl font-extrabold font-mono text-emerald-400 mt-2">
-                  {formatBDT(stats?.totalRevenueFees || 0)}
+                <span className="text-xs uppercase font-bold text-zinc-400">Pending Approvals</span>
+                <p className="text-3xl font-extrabold font-mono text-amber-400 mt-2">
+                  {pendingCount} Requests
                 </p>
               </GlassCard>
 
               <GlassCard glowColor="accent" className="p-6">
-                <span className="text-xs uppercase font-bold text-zinc-400">Transactions Count</span>
-                <p className="text-3xl font-extrabold font-heading text-white mt-2">
-                  {stats?.totalTransactions || 0}
+                <span className="text-xs uppercase font-bold text-zinc-400">Verified & Approved</span>
+                <p className="text-3xl font-extrabold font-heading text-emerald-400 mt-2">
+                  {approvedCount} Payments
                 </p>
               </GlassCard>
             </div>
-
-            {/* Visual Analytics Chart Representation */}
-            <GlassCard className="p-6">
-              <h3 className="text-lg font-bold font-heading text-white mb-4">
-                Monthly Transaction Volume Analytics
-              </h3>
-              <div className="h-48 flex items-end gap-3 pt-8 pb-4 px-4 bg-zinc-950/60 rounded-2xl border border-white/10">
-                {[45, 60, 75, 50, 90, 80, 100].map((h, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-                    <div
-                      style={{ height: `${h}%` }}
-                      className="w-full rounded-xl bg-gradient-to-t from-brand-primary via-brand-secondary to-brand-accent group-hover:brightness-125 transition-all shadow-glow"
-                    />
-                    <span className="text-[10px] font-mono text-zinc-400">Day {i + 1}</span>
-                  </div>
-                ))}
-              </div>
-            </GlassCard>
           </div>
         )}
 
-        {/* Tab 2: Users */}
+        {/* Tab 2: Verification Queue */}
+        {activeTab === "verification" && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                <span className="text-xs font-bold text-amber-400 uppercase">Under Review</span>
+                <p className="text-2xl font-bold font-mono text-white mt-1">{pendingCount}</p>
+              </div>
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                <span className="text-xs font-bold text-emerald-400 uppercase">Approved</span>
+                <p className="text-2xl font-bold font-mono text-white mt-1">{approvedCount}</p>
+              </div>
+              <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20">
+                <span className="text-xs font-bold text-rose-400 uppercase">Rejected</span>
+                <p className="text-2xl font-bold font-mono text-white mt-1">{rejectedCount}</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-3xl border border-white/10 bg-zinc-900/60 backdrop-blur-xl">
+              <table className="w-full text-left text-xs font-body">
+                <thead className="bg-white/5 text-zinc-400 font-heading uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="px-6 py-4">Reference ID</th>
+                    <th className="px-6 py-4">Student</th>
+                    <th className="px-6 py-4">Submitted TrxID</th>
+                    <th className="px-6 py-4">Sender Phone</th>
+                    <th className="px-6 py-4">Amount</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {verificationQueue.map((req) => {
+                    const verification = req.verifications?.[0];
+                    return (
+                      <tr key={req.id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 font-mono font-bold text-purple-300">
+                          {req.referenceId}
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-white">
+                          {req.user?.name || "Student"}
+                          <span className="block text-[10px] text-zinc-400 font-normal">{req.user?.email}</span>
+                        </td>
+                        <td className="px-6 py-4 font-mono font-bold text-amber-300">
+                          {verification?.trxId || "Not Submitted"}
+                        </td>
+                        <td className="px-6 py-4 font-mono text-zinc-300">
+                          {verification?.senderPhone || "N/A"}
+                        </td>
+                        <td className="px-6 py-4 font-mono font-bold text-emerald-400">
+                          {formatBDT(req.amount)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge
+                            variant={
+                              req.status === "APPROVED"
+                                ? "emerald"
+                                : req.status === "REJECTED"
+                                ? "glass"
+                                : "amber"
+                            }
+                          >
+                            {req.status}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4">
+                          {req.status === "UNDER_REVIEW" || req.status === "PENDING" ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleApproveVerification(req.id)}
+                                disabled={processing}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 text-xs font-bold transition-all"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedReqId(req.id);
+                                  setRejectModalOpen(true);
+                                }}
+                                disabled={processing}
+                                className="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 text-xs font-bold transition-all"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-zinc-500 text-[10px] font-mono">Processed</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Users */}
         {activeTab === "users" && (
           <div className="overflow-x-auto rounded-3xl border border-white/10 bg-zinc-900/60">
             <table className="w-full text-left text-xs font-body">
@@ -278,165 +373,48 @@ export default function EnhancedAdminDashboard() {
                   <th className="px-6 py-4">Email</th>
                   <th className="px-6 py-4">Role</th>
                   <th className="px-6 py-4">Balance</th>
-                  <th className="px-6 py-4">Verification</th>
-                  <th className="px-6 py-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-white/5">
+                  <tr key={u.id}>
                     <td className="px-6 py-4 font-bold text-white">{u.name}</td>
                     <td className="px-6 py-4 font-mono text-zinc-300">{u.email}</td>
                     <td className="px-6 py-4"><Badge variant="violet">{u.role}</Badge></td>
                     <td className="px-6 py-4 font-mono font-bold text-emerald-400">{formatBDT(u.balance)}</td>
-                    <td className="px-6 py-4">
-                      <Badge variant={u.isVerified ? "emerald" : "amber"}>
-                        {u.isVerified ? "VERIFIED" : "PENDING"}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => toggleUserVerification(u.id, u.isVerified)}
-                        className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold hover:text-white"
-                      >
-                        Toggle Status
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-
-        {/* Tab 3: Services */}
-        {activeTab === "services" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {services.map((s) => (
-              <GlassCard key={s.id} className="p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-bold text-white">{s.name}</h3>
-                  <Badge variant="emerald">{s.baseChargeRate}% Fee</Badge>
-                </div>
-                <p className="text-xs text-zinc-400 mb-4">{s.description}</p>
-                <span className="text-xs font-mono text-purple-300">Speed: {s.estProcessingTime}</span>
-              </GlassCard>
-            ))}
-          </div>
-        )}
-
-        {/* Tab 4: Transactions */}
-        {activeTab === "transactions" && (
-          <div className="overflow-x-auto rounded-3xl border border-white/10 bg-zinc-900/60">
-            <table className="w-full text-left text-xs font-body">
-              <thead className="bg-white/5 text-zinc-400 font-heading uppercase text-[10px]">
-                <tr>
-                  <th className="px-6 py-4">Reference</th>
-                  <th className="px-6 py-4">Type</th>
-                  <th className="px-6 py-4">Provider</th>
-                  <th className="px-6 py-4">Amount</th>
-                  <th className="px-6 py-4">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {stats?.recentTransactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-white/5">
-                    <td className="px-6 py-4 font-mono font-bold text-purple-300">{tx.referenceId || tx.id.slice(0, 8)}</td>
-                    <td className="px-6 py-4 font-bold text-white">{tx.type}</td>
-                    <td className="px-6 py-4 font-mono">{tx.provider}</td>
-                    <td className="px-6 py-4 font-mono font-bold text-white">{formatBDT(tx.amount)}</td>
-                    <td className="px-6 py-4"><Badge variant="emerald">{tx.status}</Badge></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Tab 5: Announcements */}
-        {activeTab === "announcements" && (
-          <div className="space-y-4">
-            {announcements.map((a) => (
-              <GlassCard key={a.id} className="p-6 flex items-start justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-white mb-1">{a.title}</h3>
-                  <p className="text-xs text-zinc-300 leading-relaxed">{a.description}</p>
-                </div>
-                <Badge variant={a.priority === "HIGH" ? "amber" : "violet"}>{a.priority}</Badge>
-              </GlassCard>
-            ))}
-          </div>
-        )}
-
-        {/* Tab 6: Settings */}
-        {activeTab === "settings" && (
-          <div className="space-y-4">
-            {settings.map((st) => (
-              <GlassCard key={st.id} className="p-6 flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-bold text-white font-mono">{st.key}</h4>
-                  <p className="text-xs text-zinc-400">{st.description}</p>
-                </div>
-                <span className="text-sm font-mono font-bold text-emerald-400">{st.value}</span>
-              </GlassCard>
-            ))}
           </div>
         )}
 
       </main>
 
-      {/* New Announcement Modal */}
+      {/* Reject Reason Modal */}
       <Modal
-        isOpen={newAnnouncementModal}
-        onClose={() => setNewAnnouncementModal(false)}
-        title="Post New Campus Announcement"
+        isOpen={rejectModalOpen}
+        onClose={() => setRejectModalOpen(false)}
+        title="Reject Payment Verification"
+        subtitle="Provide reason for rejecting this transaction TrxID submission"
       >
-        <form onSubmit={handleCreateAnnouncement} className="space-y-4">
+        <form onSubmit={handleRejectVerification} className="space-y-4">
           <div>
             <label className="text-xs uppercase font-bold text-zinc-400 tracking-wider block mb-1">
-              Title
-            </label>
-            <input
-              type="text"
-              placeholder="Notice title..."
-              value={announcementForm.title}
-              onChange={(e) => setAnnouncementForm({ ...announcementForm, title: e.target.value })}
-              className="w-full glass-input px-3.5 py-2.5 rounded-2xl text-sm"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="text-xs uppercase font-bold text-zinc-400 tracking-wider block mb-1">
-              Description
+              Admin Comment / Reason
             </label>
             <textarea
               rows={3}
-              placeholder="Announcement details..."
-              value={announcementForm.description}
-              onChange={(e) => setAnnouncementForm({ ...announcementForm, description: e.target.value })}
+              placeholder="e.g. bKash TrxID mismatch or payment not received on merchant account..."
+              value={rejectComment}
+              onChange={(e) => setRejectComment(e.target.value)}
               className="w-full glass-input px-3.5 py-2.5 rounded-2xl text-sm"
               required
             />
           </div>
 
-          <div>
-            <label className="text-xs uppercase font-bold text-zinc-400 tracking-wider block mb-1">
-              Priority
-            </label>
-            <select
-              value={announcementForm.priority}
-              onChange={(e) => setAnnouncementForm({ ...announcementForm, priority: e.target.value })}
-              className="w-full glass-input px-3.5 py-2.5 rounded-2xl text-sm"
-            >
-              <option value="HIGH" className="bg-zinc-900">HIGH Priority</option>
-              <option value="MEDIUM" className="bg-zinc-900">MEDIUM Priority</option>
-              <option value="LOW" className="bg-zinc-900">LOW Priority</option>
-            </select>
-          </div>
-
-          <Button type="submit" variant="glow" fullWidth>
-            Publish Announcement
+          <Button type="submit" variant="glow" fullWidth disabled={processing}>
+            {processing ? "Processing..." : "Confirm Rejection"}
           </Button>
         </form>
       </Modal>

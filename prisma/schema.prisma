@@ -1,4 +1,4 @@
-// Prisma Schema for CampusPay Full-Stack Platform
+// Prisma Schema for CampusPay v1.3 Platform
 
 generator client {
   provider = "prisma-client-js"
@@ -10,22 +10,23 @@ datasource db {
 }
 
 model User {
-  id                     String         @id @default(uuid())
+  id                     String           @id @default(uuid())
   name                   String
-  email                  String         @unique
+  email                  String           @unique
   password               String
-  role                   String         @default("STUDENT") // STUDENT | ADMIN
+  role                   String           @default("STUDENT") // STUDENT | ADMIN
   department             String?
-  university             String?        @default("Sunamganj Science and Technology University")
+  university             String?          @default("Sunamganj Science and Technology University")
   room                   String?
   phone                  String?
-  balance                Float          @default(25000.0)
-  preferredPaymentMethod String?        @default("BKASH")
-  isVerified             Boolean        @default(true)
-  createdAt              DateTime       @default(now())
-  updatedAt              DateTime       @updatedAt
+  balance                Float            @default(25000.0)
+  preferredPaymentMethod String?          @default("BKASH")
+  isVerified             Boolean          @default(true)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
   transactions           Transaction[]
   notifications          Notification[]
+  paymentRequests        PaymentRequest[]
 }
 
 model Service {
@@ -98,14 +99,15 @@ model Settings {
 }
 
 model Admin {
-  id        String     @id @default(uuid())
-  name      String
-  email     String     @unique
-  password  String
-  role      String     @default("SUPER_ADMIN")
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  auditLogs AuditLog[]
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  password      String
+  role          String         @default("SUPER_ADMIN")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  auditLogs     AuditLog[]
+  adminComments AdminComment[]
 }
 
 model Notification {
@@ -128,4 +130,68 @@ model AuditLog {
   details   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model PaymentRequest {
+  id             String          @id @default(uuid())
+  referenceId    String          @unique
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount         Float
+  provider       String          @default("BKASH")
+  serviceType    String          @default("CASH_IN")
+  merchantLink   String          @default("https://shop.bkash.com/masudul01572902196/paymentlink/default-payment")
+  merchantName   String          @default("MD. MASUDUL HASAN")
+  status         String          @default("PENDING") // PENDING | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  verifications  Verification[]
+  receipts       Receipt[]
+  statusHistory  StatusHistory[]
+  adminComments  AdminComment[]
+}
+
+model Verification {
+  id               String         @id @default(uuid())
+  paymentRequestId String
+  paymentRequest   PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
+  trxId            String         @unique
+  senderPhone      String
+  amountPaid       Float
+  notes            String?
+  verifiedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Receipt {
+  id               String         @id @default(uuid())
+  referenceId      String         @unique
+  paymentRequestId String
+  paymentRequest   PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
+  amount           Float
+  paymentMethod    String
+  status           String
+  pdfUrl           String?
+  createdAt        DateTime       @default(now())
+}
+
+model StatusHistory {
+  id               String         @id @default(uuid())
+  paymentRequestId String
+  paymentRequest   PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
+  fromStatus       String
+  toStatus         String
+  remark           String?
+  createdAt        DateTime       @default(now())
+}
+
+model AdminComment {
+  id               String         @id @default(uuid())
+  paymentRequestId String
+  paymentRequest   PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
+  adminId          String
+  admin            Admin          @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  comment          String
+  createdAt        DateTime       @default(now())
 }
