@@ -1,0 +1,66 @@
+// Prisma Schema for CampusPay Student Financial Services Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  name         String
+  email        String        @unique
+  password     String
+  role         String        @default("STUDENT") // STUDENT | ADMIN
+  department   String?
+  university   String?       @default("Sunamganj Science and Technology University")
+  room         String?
+  phone        String?
+  balance      Float         @default(25000.0)
+  isVerified   Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // CASH_IN | CASH_OUT | RECHARGE | BANK_TRANSFER | BILL_PAYMENT
+  amount      Float
+  fee         Float    @default(0.0)
+  netAmount   Float
+  provider    String   // BKASH | NAGAD | ROCKET | CELLFIN | BANK
+  recipient   String?
+  reference   String?
+  status      String   @default("COMPLETED") // COMPLETED | PENDING | FAILED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ServiceCharge {
+  id            String   @id @default(uuid())
+  provider      String   @unique // BKASH | NAGAD | ROCKET | CELLFIN | BANK
+  appFeeRate    Float
+  ussdFeeRate   Float
+  cashInFeeRate Float    @default(0.0)
+  sendMoneyFee  Float    @default(0.0)
+  updatedAt     DateTime @updatedAt
+}
+
+model PaymentGatewayConfig {
+  id          String   @id @default(uuid())
+  gatewayName String   @unique // e.g. "bKash", "Nagad", "SSLCommerz"
+  isActive    Boolean  @default(true)
+  isSandbox   Boolean  @default(true)
+  apiKey      String?
+  apiSecret   String?
+  merchantId  String?
+  baseUrl     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
