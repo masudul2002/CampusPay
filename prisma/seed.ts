@@ -4,13 +4,12 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Starting CampusPay v1.1 Complete Database Seeding...");
+  console.log("🌱 Starting CampusPay Full Extension Database Seeding...");
 
-  // 1. Password Hashing
   const adminPassword = await bcrypt.hash("admin123", 10);
   const studentPassword = await bcrypt.hash("student123", 10);
 
-  // 2. Admin Model
+  // 1. Admin Model
   const adminAccount = await prisma.admin.upsert({
     where: { email: "admin@campuspay.edu" },
     update: {},
@@ -22,7 +21,7 @@ async function main() {
     },
   });
 
-  // 3. User Model (Admin & Demo Student)
+  // 2. User Model
   await prisma.user.upsert({
     where: { email: "admin@campuspay.edu" },
     update: {},
@@ -57,7 +56,7 @@ async function main() {
     },
   });
 
-  // 4. Services Model
+  // 3. Services Model
   const services = [
     {
       name: "Cash In",
@@ -123,7 +122,7 @@ async function main() {
     });
   }
 
-  // 5. PaymentMethod Model
+  // 4. PaymentMethods
   const paymentMethods = [
     {
       name: "bKash",
@@ -185,106 +184,41 @@ async function main() {
     });
   }
 
-  // 6. Announcement Model
-  const announcements = [
-    {
-      title: "Semester Exam Fee Payment Portal Open",
-      description: "Students of CSE & EEE departments can now clear semester examination fees directly through CampusPay with 0% extra gateway charges.",
-      priority: "HIGH",
-      isPublic: true,
-    },
-    {
-      title: "Scheduled System Upgrade Notice",
-      description: "CampusPay database servers will undergo a 15-minute optimization on Sunday at 3:00 AM. Services will resume immediately.",
-      priority: "MEDIUM",
-      isPublic: true,
-    },
-    {
-      title: "Zero Cash In Fee Promo for Hall Residents",
-      description: "Deposit cash at Hall #4 Agent Counter with zero service fees all month long.",
-      priority: "LOW",
-      isPublic: true,
-    },
-  ];
-
-  for (const a of announcements) {
-    const existing = await prisma.announcement.findFirst({ where: { title: a.title } });
-    if (!existing) {
-      await prisma.announcement.create({ data: a });
-    }
-  }
-
-  // 7. Settings Model
-  const settings = [
-    { key: "platform_name", value: "CampusPay", description: "System application display name" },
-    { key: "student_discount_rate", value: "100%", description: "Percentage discount on student internal transfers" },
-    { key: "max_daily_transaction_limit", value: "100000", description: "Maximum daily transaction ceiling in BDT" },
-    { key: "support_hotline", value: "01572902196", description: "Campus emergency support hotline" },
-  ];
-
-  for (const st of settings) {
-    await prisma.settings.upsert({
-      where: { key: st.key },
-      update: st,
-      create: st,
-    });
-  }
-
-  // 8. Demo Transactions
-  const bkashMethod = await prisma.paymentMethod.findUnique({ where: { slug: "bkash" } });
-  const cashInService = await prisma.service.findUnique({ where: { slug: "cash-in" } });
-
-  const existingTx = await prisma.transaction.count({ where: { userId: student.id } });
-  if (existingTx === 0) {
-    await prisma.transaction.createMany({
+  // 5. Notifications
+  const existingNotifications = await prisma.notification.count({ where: { userId: student.id } });
+  if (existingNotifications === 0) {
+    await prisma.notification.createMany({
       data: [
         {
-          referenceId: "TXN-2026-8801",
           userId: student.id,
-          serviceId: cashInService?.id,
-          paymentMethodId: bkashMethod?.id,
-          type: "CASH_IN",
-          amount: 5000,
-          chargeAmount: 0,
-          totalAmount: 5000,
-          provider: "BKASH",
-          recipient: "Campus Agent #401",
-          reference: "Initial Student Deposit",
-          status: "COMPLETED",
+          title: "Welcome ৳1,000 Sign-up Bonus Added!",
+          message: "Welcome to CampusPay. Your initial student deposit has been credited to your wallet.",
+          isRead: false,
         },
         {
-          referenceId: "TXN-2026-8802",
           userId: student.id,
-          serviceId: cashInService?.id,
-          paymentMethodId: bkashMethod?.id,
-          type: "RECHARGE",
-          amount: 200,
-          chargeAmount: 0,
-          totalAmount: 200,
-          provider: "BKASH",
-          recipient: "01572902196",
-          reference: "GP Data Recharge",
-          status: "COMPLETED",
-        },
-        {
-          referenceId: "TXN-2026-8803",
-          userId: student.id,
-          serviceId: cashInService?.id,
-          paymentMethodId: bkashMethod?.id,
-          type: "BANK_TRANSFER",
-          amount: 1500,
-          chargeAmount: 0,
-          totalAmount: 1500,
-          provider: "BANK",
-          recipient: "Islami Bank A/C 20501...",
-          reference: "Hall Mess Fee",
-          status: "COMPLETED",
+          title: "Student Verification Status: Verified",
+          message: "Your CSE student identity was verified by the system administrator.",
+          isRead: true,
         },
       ],
     });
   }
 
-  console.log("✅ CampusPay v1.1 Complete Database Seeding Succeeded!");
+  // 6. Audit Logs
+  const existingAudit = await prisma.auditLog.count();
+  if (existingAudit === 0) {
+    await prisma.auditLog.create({
+      data: {
+        adminId: adminAccount.id,
+        action: "USER_VERIFICATION",
+        target: student.email,
+        details: "Verified student identity and assigned CSE department role",
+      },
+    });
+  }
+
+  console.log("✅ CampusPay Extension Database Seeding Succeeded!");
 }
 
 main()

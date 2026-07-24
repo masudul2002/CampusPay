@@ -1,4 +1,4 @@
-// Prisma Schema for CampusPay v1.1 Student Financial Services Platform
+// Prisma Schema for CampusPay Full-Stack Platform
 
 generator client {
   provider = "prisma-client-js"
@@ -10,36 +10,37 @@ datasource db {
 }
 
 model User {
-  id                     String        @id @default(uuid())
+  id                     String         @id @default(uuid())
   name                   String
-  email                  String        @unique
+  email                  String         @unique
   password               String
-  role                   String        @default("STUDENT") // STUDENT | ADMIN
+  role                   String         @default("STUDENT") // STUDENT | ADMIN
   department             String?
-  university             String?       @default("Sunamganj Science and Technology University")
+  university             String?        @default("Sunamganj Science and Technology University")
   room                   String?
   phone                  String?
-  balance                Float         @default(25000.0)
-  preferredPaymentMethod String?       @default("BKASH")
-  isVerified             Boolean       @default(true)
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
+  balance                Float          @default(25000.0)
+  preferredPaymentMethod String?        @default("BKASH")
+  isVerified             Boolean        @default(true)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
   transactions           Transaction[]
+  notifications          Notification[]
 }
 
 model Service {
-  id                 String        @id @default(uuid())
-  name               String
-  slug               String        @unique
-  description        String
-  category           String        // DEPOSIT | WITHDRAWAL | RECHARGE | TRANSFER | UTILITY
-  icon               String
-  baseChargeRate     Float
-  estProcessingTime  String        @default("Instant")
-  isActive           Boolean       @default(true)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  transactions       Transaction[]
+  id                String        @id @default(uuid())
+  name              String
+  slug              String        @unique
+  description       String
+  category          String        // DEPOSIT | WITHDRAWAL | RECHARGE | TRANSFER | UTILITY
+  icon              String
+  baseChargeRate    Float
+  estProcessingTime String        @default("Instant")
+  isActive          Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  transactions      Transaction[]
 }
 
 model PaymentMethod {
@@ -97,11 +98,34 @@ model Settings {
 }
 
 model Admin {
-  id        String   @id @default(uuid())
+  id        String     @id @default(uuid())
   name      String
-  email     String   @unique
+  email     String     @unique
   password  String
-  role      String   @default("SUPER_ADMIN")
+  role      String     @default("SUPER_ADMIN")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  auditLogs AuditLog[]
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  adminId   String?
+  admin     Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  action    String
+  target    String
+  details   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
