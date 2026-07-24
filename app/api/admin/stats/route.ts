@@ -10,33 +10,29 @@ export async function GET(req: NextRequest) {
       return apiError("Forbidden: Admin access required", 403);
     }
 
-    const totalUsers = await prisma.user.count({ where: { role: "STUDENT" } });
-    const totalTransactions = await prisma.transaction.count();
-    
-    const volumeAggregate = await prisma.transaction.aggregate({
-      _sum: { amount: true, fee: true },
-    });
-
-    const recentTransactions = await prisma.transaction.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 10,
-      include: {
-        user: {
-          select: { name: true, email: true, department: true },
+    const [totalUsers, totalTransactions, volumeAggregate, recentTransactions] = await Promise.all([
+      prisma.user.count(),
+      prisma.transaction.count(),
+      prisma.transaction.aggregate({
+        _sum: { amount: true, chargeAmount: true },
+      }),
+      prisma.transaction.findMany({
+        take: 10,
+        orderBy: { createdAt: "desc" },
+        include: {
+          user: { select: { name: true, email: true } },
         },
-      },
-    });
+      }),
+    ]);
 
-    const stats = {
+    return apiSuccess({
       totalUsers,
       totalTransactions,
       totalVolume: volumeAggregate._sum.amount || 0,
-      totalRevenueFees: volumeAggregate._sum.fee || 0,
+      totalRevenueFees: volumeAggregate._sum.chargeAmount || 0,
       recentTransactions,
-    };
-
-    return apiSuccess(stats, "Admin analytics retrieved successfully");
+    });
   } catch (err: any) {
-    return apiError("Failed to fetch admin stats", 500);
+    return apiError(err.message || "Failed to fetch admin stats", 500);
   }
 }
