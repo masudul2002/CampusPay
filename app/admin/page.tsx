@@ -6,6 +6,8 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { AnalyticsCharts } from "@/components/admin/analytics-charts";
+import { exportToCSV } from "@/lib/export-utils";
 import { formatBDT } from "@/lib/utils";
 import {
   ShieldCheck,
@@ -15,17 +17,12 @@ import {
   Activity,
   Bell,
   Settings as SettingsIcon,
-  LogOut,
   Plus,
   RefreshCw,
-  TrendingUp,
-  DollarSign,
-  UserCheck,
-  CheckCircle,
-  XCircle,
   Clock,
-  MessageSquare,
-  Search,
+  Download,
+  Printer,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface AdminStats {
@@ -96,9 +93,7 @@ export default function EnhancedAdminDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paymentRequestId, action: "APPROVE" }),
       });
-      if (res.ok) {
-        fetchAdminData();
-      }
+      if (res.ok) fetchAdminData();
     } catch (err) {
       alert("Error approving verification");
     } finally {
@@ -106,29 +101,11 @@ export default function EnhancedAdminDashboard() {
     }
   };
 
-  const handleRejectVerification = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedReqId) return;
-    try {
-      setProcessing(true);
-      const res = await fetch("/api/admin/verification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentRequestId: selectedReqId,
-          action: "REJECT",
-          comment: rejectComment || "Transaction ID mismatch or payment unverified",
-        }),
-      });
-      if (res.ok) {
-        setRejectModalOpen(false);
-        setRejectComment("");
-        fetchAdminData();
-      }
-    } catch (err) {
-      alert("Error rejecting verification");
-    } finally {
-      setProcessing(false);
+  const handleExportCSV = () => {
+    if (activeTab === "users") {
+      exportToCSV("CampusPay_Users", users);
+    } else {
+      exportToCSV("CampusPay_Verifications", verificationQueue);
     }
   };
 
@@ -151,8 +128,6 @@ export default function EnhancedAdminDashboard() {
   ] as const;
 
   const pendingCount = verificationQueue.filter((v) => v.status === "UNDER_REVIEW" || v.status === "PENDING").length;
-  const approvedCount = verificationQueue.filter((v) => v.status === "APPROVED").length;
-  const rejectedCount = verificationQueue.filter((v) => v.status === "REJECTED").length;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col md:flex-row">
@@ -167,7 +142,7 @@ export default function EnhancedAdminDashboard() {
             <div>
               <h2 className="text-lg font-bold font-heading">CampusPay</h2>
               <span className="text-[10px] text-brand-accent font-mono uppercase tracking-widest block -mt-1">
-                Admin HQ v1.3
+                Admin Control v2.0
               </span>
             </div>
           </div>
@@ -217,16 +192,27 @@ export default function EnhancedAdminDashboard() {
               {activeTab.replace("-", " ")} Management
             </h1>
             <p className="text-xs text-zinc-400 font-mono mt-1">
-              bKash Merchant Payment Verification System
+              CampusPay Production FinTech Control Panel
             </p>
           </div>
 
-          <button
-            onClick={fetchAdminData}
-            className="p-2.5 rounded-2xl bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<FileSpreadsheet className="w-4 h-4 text-emerald-400" />}
+              onClick={handleExportCSV}
+            >
+              Export CSV
+            </Button>
+
+            <button
+              onClick={fetchAdminData}
+              className="p-2.5 rounded-2xl bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Tab 1: Dashboard Analytics */}
@@ -234,54 +220,42 @@ export default function EnhancedAdminDashboard() {
           <div className="space-y-8">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <GlassCard glowColor="primary" className="p-6">
-                <span className="text-xs uppercase font-bold text-zinc-400">Registered Students</span>
+                <span className="text-xs uppercase font-bold text-zinc-400">Total Users</span>
                 <p className="text-3xl font-extrabold font-heading text-white mt-2">
                   {stats?.totalUsers || 0}
                 </p>
               </GlassCard>
 
               <GlassCard glowColor="accent" className="p-6">
-                <span className="text-xs uppercase font-bold text-zinc-400">Total Volume</span>
+                <span className="text-xs uppercase font-bold text-zinc-400">Transaction Volume</span>
                 <p className="text-3xl font-extrabold font-mono text-gradient-brand mt-2">
                   {formatBDT(stats?.totalVolume || 0)}
                 </p>
               </GlassCard>
 
               <GlassCard glowColor="secondary" className="p-6">
-                <span className="text-xs uppercase font-bold text-zinc-400">Pending Approvals</span>
-                <p className="text-3xl font-extrabold font-mono text-amber-400 mt-2">
-                  {pendingCount} Requests
+                <span className="text-xs uppercase font-bold text-zinc-400">Revenue Fees</span>
+                <p className="text-3xl font-extrabold font-mono text-emerald-400 mt-2">
+                  {formatBDT(stats?.totalRevenueFees || 0)}
                 </p>
               </GlassCard>
 
               <GlassCard glowColor="accent" className="p-6">
-                <span className="text-xs uppercase font-bold text-zinc-400">Verified & Approved</span>
-                <p className="text-3xl font-extrabold font-heading text-emerald-400 mt-2">
-                  {approvedCount} Payments
+                <span className="text-xs uppercase font-bold text-zinc-400">Pending Requests</span>
+                <p className="text-3xl font-extrabold font-heading text-amber-400 mt-2">
+                  {pendingCount}
                 </p>
               </GlassCard>
             </div>
+
+            {/* Analytics Charts Component */}
+            <AnalyticsCharts />
           </div>
         )}
 
         {/* Tab 2: Verification Queue */}
         {activeTab === "verification" && (
           <div className="space-y-6">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
-                <span className="text-xs font-bold text-amber-400 uppercase">Under Review</span>
-                <p className="text-2xl font-bold font-mono text-white mt-1">{pendingCount}</p>
-              </div>
-              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
-                <span className="text-xs font-bold text-emerald-400 uppercase">Approved</span>
-                <p className="text-2xl font-bold font-mono text-white mt-1">{approvedCount}</p>
-              </div>
-              <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20">
-                <span className="text-xs font-bold text-rose-400 uppercase">Rejected</span>
-                <p className="text-2xl font-bold font-mono text-white mt-1">{rejectedCount}</p>
-              </div>
-            </div>
-
             <div className="overflow-x-auto rounded-3xl border border-white/10 bg-zinc-900/60 backdrop-blur-xl">
               <table className="w-full text-left text-xs font-body">
                 <thead className="bg-white/5 text-zinc-400 font-heading uppercase tracking-wider text-[10px]">
@@ -339,16 +313,6 @@ export default function EnhancedAdminDashboard() {
                               >
                                 Approve
                               </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedReqId(req.id);
-                                  setRejectModalOpen(true);
-                                }}
-                                disabled={processing}
-                                className="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 text-xs font-bold transition-all"
-                              >
-                                Reject
-                              </button>
                             </div>
                           ) : (
                             <span className="text-zinc-500 text-[10px] font-mono">Processed</span>
@@ -390,34 +354,6 @@ export default function EnhancedAdminDashboard() {
         )}
 
       </main>
-
-      {/* Reject Reason Modal */}
-      <Modal
-        isOpen={rejectModalOpen}
-        onClose={() => setRejectModalOpen(false)}
-        title="Reject Payment Verification"
-        subtitle="Provide reason for rejecting this transaction TrxID submission"
-      >
-        <form onSubmit={handleRejectVerification} className="space-y-4">
-          <div>
-            <label className="text-xs uppercase font-bold text-zinc-400 tracking-wider block mb-1">
-              Admin Comment / Reason
-            </label>
-            <textarea
-              rows={3}
-              placeholder="e.g. bKash TrxID mismatch or payment not received on merchant account..."
-              value={rejectComment}
-              onChange={(e) => setRejectComment(e.target.value)}
-              className="w-full glass-input px-3.5 py-2.5 rounded-2xl text-sm"
-              required
-            />
-          </div>
-
-          <Button type="submit" variant="glow" fullWidth disabled={processing}>
-            {processing ? "Processing..." : "Confirm Rejection"}
-          </Button>
-        </form>
-      </Modal>
 
     </div>
   );

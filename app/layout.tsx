@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Inter } from "next/font/google";
 import "./globals.css";
+import { GlobalSearchModal } from "@/components/ui/global-search";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -15,14 +16,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CampusPay — Student Financial Services Platform",
+  title: "CampusPay — Production Ready Student FinTech Platform",
   description:
     "CampusPay is a Student Financial Services Platform for university students offering Cash In, Cash Out, Mobile Recharge, Bank Transfers, and MFS Charge Calculator.",
   keywords: [
     "CampusPay",
     "Student Financial Services",
     "University Fintech",
-    "bKash Fee Calculator",
+    "bKash Merchant Payment",
     "Nagad Fee Calculator",
     "Mobile Recharge",
     "Student Payments",
@@ -42,10 +43,29 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FinancialProduct",
+    name: "CampusPay Student Financial Platform",
+    description: "Fintech web platform for university students in Bangladesh.",
+    url: "https://campuspay.edu",
+    author: {
+      "@type": "Person",
+      name: "MD. MASUDUL HASAN",
+    },
+  };
+
   return (
     <html lang="en" className={`dark ${manrope.variable} ${inter.variable}`}>
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="bg-zinc-950 text-zinc-100 antialiased font-body min-h-screen selection:bg-brand-primary selection:text-white">
         {children}
+        <GlobalSearchModal />
       </body>
     </html>
   );

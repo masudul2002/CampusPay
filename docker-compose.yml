@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://campuspay:campuspay123@db:5432/campuspay_db?schema=public
+      - JWT_SECRET=campus-pay-super-secret-production-key-2026
+    depends_on:
+      - db
+    restart: always
+
+  db:
+    image: postgres:16-alpine
+    container_name: campuspay_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: campuspay
+      POSTGRES_PASSWORD: campuspay123
+      POSTGRES_DB: campuspay_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  postgres_data:
