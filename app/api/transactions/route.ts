@@ -7,7 +7,7 @@ import { z } from "zod";
 const CreateTransactionSchema = z.object({
   type: z.enum(["CASH_IN", "CASH_OUT", "RECHARGE", "BANK_TRANSFER", "BILL_PAYMENT"]),
   amount: z.number().positive("Amount must be greater than zero"),
-  provider: z.enum(["BKASH", "NAGAD", "ROCKET", "CELLFIN", "BANK"]),
+  provider: z.enum(["BKASH", "NAGAD", "ROCKET", "CELLFIN", "BANK", "UPAY"]),
   recipient: z.string().optional(),
   reference: z.string().optional(),
 });
@@ -37,11 +37,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = CreateTransactionSchema.parse(body);
 
-    const serviceRate = await prisma.serviceCharge.findUnique({
-      where: { provider: parsed.provider },
+    const pm = await prisma.paymentMethod.findUnique({
+      where: { slug: parsed.provider.toLowerCase() },
     });
 
-    const feeRate = serviceRate ? serviceRate.appFeeRate : 1.85;
+    const feeRate = pm ? pm.feeRate : 1.85;
     const fee = parsed.type === "CASH_IN" ? 0 : (parsed.amount * feeRate) / 100;
     const netAmount = parsed.type === "CASH_IN" ? parsed.amount : parsed.amount + fee;
 
@@ -68,8 +68,8 @@ export async function POST(req: NextRequest) {
           userId: user.id,
           type: parsed.type,
           amount: parsed.amount,
-          fee,
-          netAmount,
+          chargeAmount: fee,
+          totalAmount: netAmount,
           provider: parsed.provider,
           recipient: parsed.recipient || "N/A",
           reference: parsed.reference || `CampusPay ${parsed.type}`,
